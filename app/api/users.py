@@ -1,20 +1,12 @@
 from typing import Annotated
-
 from fastapi import APIRouter, Depends, HTTPException, status
-
 from sqlalchemy import select
-
 from sqlalchemy.orm import Session
 
 from app.database import models
-
 from app.database.database import get_db
+from app.models.schemas import PostResponse,UserCreate,UserResponse,UserUpdate
 
-from app.models.schemas import (
-    PostResponse,
-    UserCreate,
-    UserResponse,
-)
 
 
 router = APIRouter(
@@ -91,11 +83,8 @@ def get_user(
             models.User.id == user_id
         ),
     )
-
     user = result.scalars().first()
-
     if user:
-
         return user
 
     raise HTTPException(
@@ -112,17 +101,13 @@ def get_user_posts(
     user_id: int,
     db: Annotated[Session, Depends(get_db)],
 ):
-
     result = db.execute(
         select(models.User).where(
             models.User.id == user_id
         )
     )
-
     user = result.scalars().first()
-
     if not user:
-
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
@@ -133,7 +118,32 @@ def get_user_posts(
             models.Post.user_id == user_id
         )
     )
-
     posts = result.scalars().all()
 
     return posts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
