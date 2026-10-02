@@ -1,7 +1,10 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
+from contextlib import asynccontextmanager
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import models
 from app.database.database import get_db
@@ -16,10 +19,10 @@ router = APIRouter(
 
 
 @router.get("", response_model=list[PostResponse])
-def get_posts(db: Annotated[Session, Depends(get_db)]):
+async def get_posts(db: Annotated[AsyncSession, Depends(get_db)]):
 
-    result = db.execute(
-        select(models.Post)
+    result = await db.execute(
+        select(models.Post).options(selectinload(models.Post.author))
     )
     posts = result.scalars().all()
 
@@ -28,18 +31,15 @@ def get_posts(db: Annotated[Session, Depends(get_db)]):
 
 @router.post("", response_model=PostResponse, status_code=status.HTTP_201_CREATED,
 )
-def create_post(post: PostCreate,db: Annotated[Session, Depends(get_db)]):
+async def create_post(post: PostCreate,db: Annotated[AsyncSession, Depends(get_db)]):
 
-    result = db.execute(
+    result = await db.execute(
         select(models.User).where(
             models.User.id == post.user_id
         )
     )
-
     user = result.scalars().first()
-
     if not user:
-
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
@@ -51,16 +51,16 @@ def create_post(post: PostCreate,db: Annotated[Session, Depends(get_db)]):
         user_id=post.user_id,
     )
     db.add(new_post)
-    db.commit()
-    db.refresh(new_post)
+    await db.commit()
+    await db.refresh(new_post, attribute_names=["author"])
 
     return new_post
 
 
 @router.get("/{post_id}",response_model=PostResponse)
-def get_post(post_id: int, db: Annotated[Session, Depends(get_db)]):
+async def get_post(post_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
 
-    result = db.execute(
+    result = await db.execute(
         select(models.Post).where(
             models.Post.id == post_id
         )
@@ -75,9 +75,8 @@ def get_post(post_id: int, db: Annotated[Session, Depends(get_db)]):
     )
 
 @router.put("/{post_id}",response_model=PostResponse)
-def update_post_full(post_id: int, post_data: PostCreate, db: Annotated[Session, Depends(get_db)]):
-
-    result = db.execute(
+async def update_post_full(post_id: int, post_data: PostCreate, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(
         select(models.Post).where(
             models.Post.id == post_id
         )
@@ -89,7 +88,7 @@ def update_post_full(post_id: int, post_data: PostCreate, db: Annotated[Session,
                 detail="Post not found"
         )
     if post_data.user_id != post.user_id:
-        result = db.execute(select(models.User).where(models.User.id == post.user_id))
+        result = await db.execute(select(models.User).where(models.User.id == post.user_id))
         user = result.scalars().first()
         
         if not user:
@@ -101,15 +100,15 @@ def update_post_full(post_id: int, post_data: PostCreate, db: Annotated[Session,
     post.content = post_data.content
     post.user_id = post_data.user_id
 
-    db.commit()
-    db.refresh(post)
+    await db.commit()
+    await db.refresh(post, attribute_names=["author"])
 
     return post
             
 @router.patch("/{post_id}",response_model=PostResponse)
-def update_post_partial(post_id: int, post_data: PostUpdate, db: Annotated[Session, Depends(get_db)]):
+async def update_post_partial(post_id: int, post_data: PostUpdate, db: Annotated[AsyncSession, Depends(get_db)]):
 
-    result = db.execute(
+    result = await db.execute(
         select(models.Post).where(
             models.Post.id == post_id
         )
@@ -124,14 +123,14 @@ def update_post_partial(post_id: int, post_data: PostUpdate, db: Annotated[Sessi
     for field, value in update_data.items():
         setattr(post, field, value)
 
-    db.commit()
-    db.refresh(post)
+    await db.commit()
+    await db.refresh(post, attribute_names=["author"])
     
     return post
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(post_id: int, db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(
+async def delete_post(post_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(
         select(models.Post).where(
             models.Post.id == post_id
         )
@@ -142,8 +141,8 @@ def delete_post(post_id: int, db: Annotated[Session, Depends(get_db)]):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Post not found"
         )
-    db.delete(post)
-    db.commit()
+    await db.delete(post)
+    await db.commit()
             
     
 
